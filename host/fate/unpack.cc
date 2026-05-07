@@ -25,7 +25,7 @@ load_words()
   FILE *fp = fopen("words.txt", "r");
   if(fp == 0){
     fprintf(stderr, "cannot open words.txt\n");
-    exit(1);
+    return;
   }
 
   while(1){
