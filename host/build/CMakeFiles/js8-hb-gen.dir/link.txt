@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG "CMakeFiles/js8-hb-gen.dir/main.cc.o" "CMakeFiles/js8-hb-gen.dir/recode.cc.o" "CMakeFiles/js8-hb-gen.dir/fate/pack.cc.o" "CMakeFiles/js8-hb-gen.dir/fate/libldpc.cc.o" "CMakeFiles/js8-hb-gen.dir/fate/util.cc.o" "CMakeFiles/js8-hb-gen.dir/fate/unpack.cc.o" -o js8-hb-gen  -lsndfile -lm 

@@ -244,7 +244,7 @@ pack_any(int a87[87], int rate, double hz)
   extern std::vector<int> recode(int a174[]);
   std::vector<int> a79 = recode(a174);
 
-  int block = 1920 / (12000 / rate);
+  int block = (1920 * rate) / 12000; // patched: original used integer division causing div/0 at rate>12000
 
   std::vector<double> v = fsk(a79, hz, 6.25, rate, block);
 

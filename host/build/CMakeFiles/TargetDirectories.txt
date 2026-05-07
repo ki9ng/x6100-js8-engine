@@ -1,0 +1,3 @@
+/home/ki9ng/projects/x6100-js8-engine/host/build/CMakeFiles/js8-hb-gen.dir
+/home/ki9ng/projects/x6100-js8-engine/host/build/CMakeFiles/edit_cache.dir
+/home/ki9ng/projects/x6100-js8-engine/host/build/CMakeFiles/rebuild_cache.dir
