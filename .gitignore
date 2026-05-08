@@ -2,3 +2,8 @@ host/build/
 target/build/
 *.o
 *.d
+lib/build/
+lib/test/smoke
+lib/test/smoke.wav
+lib/test/smoke6k.wav
+lib/test/words.txt

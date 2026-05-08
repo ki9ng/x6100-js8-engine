@@ -1,0 +1,10 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${exec_prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: libx6100js8
+Description: JS8 protocol engine for the Xiegu X6100
+Version: 0.1.0
+Libs: -L${libdir} -lx6100js8
+Cflags: -I${includedir}
