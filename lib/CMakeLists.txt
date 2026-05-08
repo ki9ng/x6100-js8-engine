@@ -52,11 +52,14 @@ install(DIRECTORY include/x6100js8
 )
 
 # pkg-config so x6100_gui's CMake can find us via pkg_check_modules.
+# Filename matches the runtime library name (libx6100js8) so consumers
+# query pkg_check_modules(... libx6100js8) — same convention as libcurl,
+# libpng, etc.
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/x6100js8.pc.in
-    ${CMAKE_CURRENT_BINARY_DIR}/x6100js8.pc
+    ${CMAKE_CURRENT_SOURCE_DIR}/libx6100js8.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/libx6100js8.pc
     @ONLY
 )
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/x6100js8.pc
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libx6100js8.pc
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
 )
