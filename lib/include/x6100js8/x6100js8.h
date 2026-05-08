@@ -6,7 +6,8 @@
  * is plain C so x6100_gui (a C codebase with a few .cpp helpers) can
  * link against it without ABI surprises.
  *
- * Phase 2.5 surface: encoder only. Decoder hooks land in Phase 4.
+ * Phase 3 surface: HB single-frame encoder + multi-frame text encoder.
+ * Decoder hooks land in Phase 4 alongside fftw3 and js8.cc.
  */
 
 #ifndef X6100JS8_H
@@ -41,7 +42,36 @@ int x6100js8_encode_hb(const char *callsign,
                        size_t     *out_n_samples);
 
 /*
- * Library version string, e.g. "0.1.0".
+ * Encode an arbitrary text message as a multi-frame JS8 transmission.
+ *
+ * The text is split into JS8 Huffman-encoded frames; each frame is
+ * 12.64 sec of PCM. Frames are concatenated back-to-back with no
+ * inter-frame silence — slot alignment is the caller's responsibility.
+ * (Typical use: single PTT cycle for all frames, accept the few seconds
+ * of misalignment from the 15-sec slot boundary, since POTAGW gateways
+ * are tolerant of frames arriving slightly off-slot.)
+ *
+ * The last frame is marked itype=2 (end-of-over) so JS8Call decoders
+ * close the message cleanly.
+ *
+ * Output buffer same caller-owned-malloc rules as x6100js8_encode_hb.
+ *
+ * Typical lengths at JS8 Normal:
+ *   - 13 chars     -> 1 frame  (~13 sec)
+ *   - 26 chars     -> 2 frames (~26 sec)
+ *   - 50-char POTA spot body (e.g.
+ *     "@APRSIS CMD :POTAGW   :KI9NG US-0765 14225 SSB")
+ *                  -> ~5 frames (~63 sec)
+ *
+ * Returns 0 on success, nonzero on failure.
+ */
+int x6100js8_encode_text(const char *text,
+                         double      hz,
+                         int16_t   **out_samples,
+                         size_t     *out_n_samples);
+
+/*
+ * Library version string, e.g. "0.2.0".
  */
 const char *x6100js8_version(void);
 
