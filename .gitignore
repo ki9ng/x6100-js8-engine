@@ -1,0 +1,4 @@
+host/build/
+target/build/
+*.o
+*.d
