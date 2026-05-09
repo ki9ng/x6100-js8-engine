@@ -39,8 +39,10 @@ static constexpr int kRate         = 48000;
 static constexpr int kSymsamples   = (1920 * kRate) / 12000;  // 7680
 static constexpr double kSpacing   = 6.25;
 static constexpr int kSamplesPerFrame = 79 * kSymsamples;     // 606720
+static constexpr int kSlotSamples     = 15 * kRate;            // 720000 (15.0 sec)
+static constexpr int kInterFrameSilence = kSlotSamples - kSamplesPerFrame; // 113280 (2.36 sec)
 
-static const char *kVersion = "0.4.0";
+static const char *kVersion = "0.4.1";
 
 extern "C" const char *x6100js8_version(void) {
     return kVersion;
@@ -128,6 +130,24 @@ extern "C" int x6100js8_encode_pota_spot(const char *callsign,
     std::vector<double> all;
     all.reserve(kSamplesPerFrame * 6);  // typical 5-frame message + slack
 
+    // Frames are emitted with kInterFrameSilence samples of silence between
+    // each — JS8Call's protocol places frames at 15-sec slot boundaries, so
+    // the airtime layout for a 5-frame message starting at slot 0 is:
+    //
+    //   slot 0 [0..15s]:  frame 1 (12.64s) + silence (2.36s)
+    //   slot 1 [15..30s]: frame 2 (12.64s) + silence (2.36s)
+    //   slot 2 [30..45s]: frame 3 (12.64s) + silence (2.36s)
+    //   slot 3 [45..60s]: frame 4 (12.64s) + silence (2.36s)
+    //   slot 4 [60..75s]: frame 5 (12.64s)  ← no trailing silence
+    //
+    // Without the silence between frames, frames 2..N land mid-slot at the
+    // receiver and won't decode. Caller must align this PCM to a slot
+    // boundary (e.g. via clock_gettime fmod 15 sec) before keying PTT.
+
+    auto append_silence = [&](size_t n) {
+        all.insert(all.end(), n, 0.0);
+    };
+
     // Frame 1: directed @APRSIS CMD frame from KI9NG to @APRSIS, cmd=24 (CMD)
     char m[12];
     if (!x6100js8::build_directed_chars(callsign, "@APRSIS", 24, m)) return 4;
@@ -138,6 +158,9 @@ extern "C" int x6100js8_encode_pota_spot(const char *callsign,
     std::string remaining(body);
     int safety = 0;
     while (!remaining.empty()) {
+        // Slot gap before this frame (i.e. after the previous one).
+        append_silence(kInterFrameSilence);
+
         size_t consumed = 0;
         if (!x6100js8::build_data_compressed_chars(remaining, consumed, m)) return 6;
         if (consumed == 0) return 7;  // pathological: no progress
