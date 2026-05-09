@@ -87,7 +87,7 @@ static const char kAlphabet64[] =
 // from kAlphabet64. The mapping mirrors upstream byte for byte.
 // ---------------------------------------------------------------------------
 
-static void pack72bits_to_chars(uint64_t value, uint8_t rem, char out[12]) {
+void pack72bits_to_chars(uint64_t value, uint8_t rem, char out[12]) {
     const uint8_t mask4 = (1 << 4) - 1;
     const uint8_t mask6 = (1 << 6) - 1;
 

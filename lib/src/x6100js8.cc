@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// libx6100js8 — public C API implementation.
+// libx6100js8 — public C API.
 //
-// Phase 3 (JS8Call-interoperable): builds 87-bit info vectors in JS8Call's
-// layout, hands them to fate's LDPC/recode/fsk pipeline, produces audio
-// that real JS8Call decoders can read.
+// Phase 3 (JS8Call-interop). Encoders use the lib/js8encode/ frame builders
+// and fate's downstream LDPC + recode + fsk pipeline. All output round-trips
+// against /usr/bin/js8 + python3-js8py.
 
 #include "x6100js8/x6100js8.h"
 #include "../js8encode/js8encode.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -19,25 +20,36 @@ namespace x6100js8 {
 extern bool build_hb_chars(const std::string &callsign,
                            const std::string &grid,
                            char out12[12]);
+extern bool build_directed_chars(const std::string &from,
+                                 const std::string &to,
+                                 int                cmd,
+                                 char               out12[12]);
+extern bool build_data_compressed_chars(const std::string &text,
+                                        size_t            &consumed,
+                                        char               out12[12]);
 }
 
-// fate's fsk modulator
 extern std::vector<double> fsk(std::vector<int> symbols,
                                 double hz, double spacing,
                                 int rate, int symsamples);
 
-static const char *kVersion = "0.3.0";
+// JS8 Normal: 1920 samples per symbol at 12 kHz = 7680 at 48 kHz.
+// 79 symbols/frame × 7680 samples = 606720 samples per frame at 48 kHz.
+static constexpr int kRate         = 48000;
+static constexpr int kSymsamples   = (1920 * kRate) / 12000;  // 7680
+static constexpr double kSpacing   = 6.25;
+static constexpr int kSamplesPerFrame = 79 * kSymsamples;     // 606720
+
+static const char *kVersion = "0.4.0";
 
 extern "C" const char *x6100js8_version(void) {
     return kVersion;
 }
 
-// Convert vector of [-1,+1] doubles to int16 PCM, peak-normalised to 0.95 FS.
-// Same quantisation as the standalone target binary (verified byte-exact in
-// Phase 2). Matters for downstream decoders that don't AGC.
+// Quantise [-1,+1] doubles to int16 PCM with peak normalisation to 0.95 FS.
 static int16_t *quantise_pcm(const std::vector<double> &samples) {
     int16_t *buf = (int16_t *)malloc(samples.size() * sizeof(int16_t));
-    if (!buf) return NULL;
+    if (!buf) return nullptr;
     double mx = 0.0;
     for (double s : samples) {
         double a = std::fabs(s);
@@ -53,49 +65,94 @@ static int16_t *quantise_pcm(const std::vector<double> &samples) {
     return buf;
 }
 
+// Encode 12 alphabet64 chars + i3 to 79 tones, then to PCM samples.
+// Returns true on success and appends the samples to `out`.
+static bool encode_one_frame(const char message12[12],
+                             int  i3,
+                             double hz,
+                             std::vector<double> &out) {
+    int tones[79];
+    if (!x6100js8::js8_encode_tones(i3, x6100js8::kCostasNormal, message12, tones)) {
+        return false;
+    }
+    std::vector<int> tonevec(tones, tones + 79);
+    auto samp = fsk(tonevec, hz, kSpacing, kRate, kSymsamples);
+    if (samp.empty()) return false;
+    out.insert(out.end(), samp.begin(), samp.end());
+    return true;
+}
+
 extern "C" int x6100js8_encode_hb(const char *callsign,
                                   const char *grid,
                                   double      hz,
                                   int16_t   **out_samples,
                                   size_t     *out_n_samples) {
     if (!callsign || !grid || !out_samples || !out_n_samples) return 1;
-    if (*out_samples != NULL || *out_n_samples != 0) return 2;
-    if (strlen(callsign) == 0 || strlen(callsign) > 11) return 3;
-    if (strlen(grid) != 4) return 4;
+    if (*out_samples != nullptr || *out_n_samples != 0)       return 2;
+    if (strlen(callsign) == 0 || strlen(callsign) > 11)       return 3;
+    if (strlen(grid) != 4)                                    return 4;
 
-    char message[12];
-    if (!x6100js8::build_hb_chars(callsign, grid, message)) return 5;
+    char m[12];
+    if (!x6100js8::build_hb_chars(callsign, grid, m)) return 5;
 
-    int tones[79];
-    if (!x6100js8::js8_encode_tones(0 /*FrameHeartbeat=0*/,
-                                    x6100js8::kCostasNormal,
-                                    message,
-                                    tones)) return 6;
+    // Single-frame: i3 = JS8CallFirst | JS8CallLast = 1 | 2 = 3
+    std::vector<double> all;
+    all.reserve(kSamplesPerFrame);
+    if (!encode_one_frame(m, 3, hz, all)) return 6;
 
-    // Tones -> 48 kHz PCM. JS8 Normal: 1920 samples per symbol at 12 kHz =
-    // 7680 samples per symbol at 48 kHz. 6.25 Hz tone spacing.
-    const int rate = 48000;
-    const int symsamples = (1920 * rate) / 12000;  // = 7680
-    std::vector<int> tonevec(tones, tones + 79);
-    std::vector<double> samples = fsk(tonevec, hz, 6.25, rate, symsamples);
-    if (samples.empty()) return 7;
-
-    int16_t *buf = quantise_pcm(samples);
-    if (!buf) return 8;
-
+    int16_t *buf = quantise_pcm(all);
+    if (!buf) return 7;
     *out_samples   = buf;
-    *out_n_samples = samples.size();
+    *out_n_samples = all.size();
     return 0;
 }
 
-extern "C" int x6100js8_encode_text(const char *text,
-                                    double      hz,
-                                    int16_t   **out_samples,
-                                    size_t     *out_n_samples) {
-    // Phase 3 placeholder — the interoperable text-frame builder lives in
-    // a follow-up commit that adds packCompressedMessage / packHuffMessage.
-    // For now this returns "not implemented" so callers fall back to
-    // x6100js8_encode_hb for the radio-side smoke test.
-    (void)text; (void)hz; (void)out_samples; (void)out_n_samples;
-    return 99;  // ENOSYS-ish
+extern "C" int x6100js8_encode_pota_spot(const char *callsign,
+                                         const char *park,
+                                         int         freq_khz,
+                                         const char *mode,
+                                         double      hz,
+                                         int16_t   **out_samples,
+                                         size_t     *out_n_samples) {
+    if (!callsign || !park || !mode || !out_samples || !out_n_samples) return 1;
+    if (*out_samples != nullptr || *out_n_samples != 0)                return 2;
+    if (freq_khz <= 0 || freq_khz > 99999999)                          return 3;
+
+    // Build the body string: ":POTAGW   :CALL PARK FREQ MODE"
+    // POTAGW must be padded to exactly 9 chars (POTAGW + 3 spaces).
+    char body[128];
+    std::snprintf(body, sizeof(body),
+                  ":POTAGW   :%s %s %d %s",
+                  callsign, park, freq_khz, mode);
+
+    std::vector<double> all;
+    all.reserve(kSamplesPerFrame * 6);  // typical 5-frame message + slack
+
+    // Frame 1: directed @APRSIS CMD frame from KI9NG to @APRSIS, cmd=24 (CMD)
+    char m[12];
+    if (!x6100js8::build_directed_chars(callsign, "@APRSIS", 24, m)) return 4;
+    // i3 = JS8CallFirst (=1) on the first frame
+    if (!encode_one_frame(m, 1, hz, all)) return 5;
+
+    // Frames 2..N: data frames carrying chunks of `body`
+    std::string remaining(body);
+    int safety = 0;
+    while (!remaining.empty()) {
+        size_t consumed = 0;
+        if (!x6100js8::build_data_compressed_chars(remaining, consumed, m)) return 6;
+        if (consumed == 0) return 7;  // pathological: no progress
+        remaining.erase(0, consumed);
+
+        // i3 = JS8Call (=0) for middle frames, JS8CallLast (=2) for the last.
+        int i3 = remaining.empty() ? 2 : 0;
+        if (!encode_one_frame(m, i3, hz, all)) return 8;
+
+        if (++safety > 16) return 9;  // pathological-length input
+    }
+
+    int16_t *buf = quantise_pcm(all);
+    if (!buf) return 10;
+    *out_samples   = buf;
+    *out_n_samples = all.size();
+    return 0;
 }

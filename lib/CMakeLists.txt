@@ -19,6 +19,8 @@ add_library(x6100js8 SHARED
     src/x6100js8.cc
     js8encode/js8encode.cpp
     js8encode/frames.cpp
+    js8encode/directed.cpp
+    js8encode/data.cpp
     ../target/fate/pack.cc
     ../target/fate/libldpc.cc
     ../target/fate/util.cc

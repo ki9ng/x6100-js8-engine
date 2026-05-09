@@ -1,13 +1,8 @@
 /*
  * libx6100js8 — JS8 protocol engine for the Xiegu X6100
  *
- * Public C API. The implementation underneath is C++ (ported from
- * rtmrtmrtmrtm/fate), but everything callable from outside the library
- * is plain C so x6100_gui (a C codebase with a few .cpp helpers) can
- * link against it without ABI surprises.
- *
- * Phase 3 surface: HB single-frame encoder + multi-frame text encoder.
- * Decoder hooks land in Phase 4 alongside fftw3 and js8.cc.
+ * Public C API. JS8Call-interoperable: encoder output decodes correctly
+ * against /usr/bin/js8 + python3-js8py.
  */
 
 #ifndef X6100JS8_H
@@ -21,19 +16,18 @@ extern "C" {
 #endif
 
 /*
- * Encode a JS8 directed-message frame ("MYCALL: HB GRID", an HB probe
- * frame in fate parlance) into 48 kHz mono 16-bit little-endian PCM.
- *
- * Caller-owned output buffer:
+ * Caller-owned output buffer convention used by all encoders:
  *   - On entry, *out_samples must be NULL and *out_n_samples must be 0.
- *   - On success, *out_samples points to a malloc()'d buffer holding
- *     *out_n_samples int16 samples. Caller must free() it.
- *
- * Returns 0 on success, nonzero on failure (callsign too long, grid
- * malformed, etc.).
- *
- * For the JS8 Normal submode the output is exactly 606720 samples
- * (12.64 sec) at 1500 Hz audio offset.
+ *   - On success, *out_samples points to a malloc()'d buffer of
+ *     *out_n_samples int16 samples (48 kHz, mono, little-endian).
+ *     Caller must free() it.
+ *   - Returns 0 on success, nonzero on failure.
+ */
+
+/*
+ * Encode a single-frame heartbeat: "MYCALL: HB GRID".
+ * For JS8 Normal the output is 606720 samples (12.64 sec) at the audio
+ * offset specified by hz (typically 1500.0).
  */
 int x6100js8_encode_hb(const char *callsign,
                        const char *grid,
@@ -42,36 +36,34 @@ int x6100js8_encode_hb(const char *callsign,
                        size_t     *out_n_samples);
 
 /*
- * Encode an arbitrary text message as a multi-frame JS8 transmission.
+ * Encode a POTA self-spot using the @APRSIS CMD path that POTAGW listens on.
  *
- * The text is split into JS8 Huffman-encoded frames; each frame is
- * 12.64 sec of PCM. Frames are concatenated back-to-back with no
- * inter-frame silence — slot alignment is the caller's responsibility.
- * (Typical use: single PTT cycle for all frames, accept the few seconds
- * of misalignment from the 15-sec slot boundary, since POTAGW gateways
- * are tolerant of frames arriving slightly off-slot.)
+ * Builds the message "@APRSIS CMD :POTAGW   :CALLSIGN PARK FREQ_KHZ MODE"
+ * (where PARK is e.g. "US-0765", FREQ_KHZ is integer kHz like "14225",
+ * MODE is "SSB"|"FM"|"CW"|"USB"|"LSB"|"DATA"). Emits a directed @APRSIS
+ * frame followed by enough JSC-compressed data frames to carry the body.
  *
- * The last frame is marked itype=2 (end-of-over) so JS8Call decoders
- * close the message cleanly.
+ * The message is encoded as: [directed frame][data frame 1]...[data frame N]
+ * concatenated as continuous PCM with no inter-frame silence. Total length
+ * varies with body size: a typical 32-char body needs 4 data frames + the
+ * 1 directed frame = 5 × 12.64 sec ≈ 63 sec on-air.
  *
- * Output buffer same caller-owned-malloc rules as x6100js8_encode_hb.
- *
- * Typical lengths at JS8 Normal:
- *   - 13 chars     -> 1 frame  (~13 sec)
- *   - 26 chars     -> 2 frames (~26 sec)
- *   - 50-char POTA spot body (e.g.
- *     "@APRSIS CMD :POTAGW   :KI9NG US-0765 14225 SSB")
- *                  -> ~5 frames (~63 sec)
- *
- * Returns 0 on success, nonzero on failure.
+ * Returns:
+ *   0   on success
+ *   1-3 invalid arguments (null pointers, bad lengths)
+ *   4   callsign couldn't be packed
+ *   5+  internal encode failures
  */
-int x6100js8_encode_text(const char *text,
-                         double      hz,
-                         int16_t   **out_samples,
-                         size_t     *out_n_samples);
+int x6100js8_encode_pota_spot(const char *callsign,
+                              const char *park,
+                              int         freq_khz,
+                              const char *mode,
+                              double      hz,
+                              int16_t   **out_samples,
+                              size_t     *out_n_samples);
 
 /*
- * Library version string, e.g. "0.2.0".
+ * Library version string, e.g. "0.4.0".
  */
 const char *x6100js8_version(void);
 
