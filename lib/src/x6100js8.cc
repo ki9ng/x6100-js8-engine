@@ -42,7 +42,7 @@ static constexpr int kSamplesPerFrame = 79 * kSymsamples;     // 606720
 static constexpr int kSlotSamples     = 15 * kRate;            // 720000 (15.0 sec)
 static constexpr int kInterFrameSilence = kSlotSamples - kSamplesPerFrame; // 113280 (2.36 sec)
 
-static const char *kVersion = "0.4.1";
+static const char *kVersion = "0.4.2";
 
 extern "C" const char *x6100js8_version(void) {
     return kVersion;
@@ -120,11 +120,15 @@ extern "C" int x6100js8_encode_pota_spot(const char *callsign,
     if (*out_samples != nullptr || *out_n_samples != 0)                return 2;
     if (freq_khz <= 0 || freq_khz > 99999999)                          return 3;
 
-    // Build the body string: ":POTAGW   :CALL PARK FREQ MODE"
+    // Build the body string: ":POTAGW   :CALL PARK FREQ MODE COMMENT"
     // POTAGW must be padded to exactly 9 chars (POTAGW + 3 spaces).
+    // The COMMENT field appears optional in the public docs, but every
+    // working example we have includes one (e.g. DL7EDU's blog post uses
+    // "NOW"). Including it removes one possible source of "looks valid
+    // but POTAGW's parser doesn't accept it" failure modes.
     char body[128];
     std::snprintf(body, sizeof(body),
-                  ":POTAGW   :%s %s %d %s",
+                  ":POTAGW   :%s %s %d %s NOW",
                   callsign, park, freq_khz, mode);
 
     std::vector<double> all;
