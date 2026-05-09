@@ -11,3 +11,7 @@ lib/test/smoke_text
 lib/test/smoke_text.wav
 lib/test/smoke_text6k.wav
 lib/test/jsc_roundtrip
+lib/test/sync_test
+lib/test/jsc_roundtrip
+lib/test/jt9_wisdom.dat
+lib/test/timer.out
