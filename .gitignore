@@ -10,3 +10,4 @@ lib/test/words.txt
 lib/test/smoke_text
 lib/test/smoke_text.wav
 lib/test/smoke_text6k.wav
+lib/test/jsc_roundtrip
