@@ -46,7 +46,7 @@ static constexpr int    kSymsamples       = (1920 * kRate) / 12000;  // 7680
 static constexpr double kSpacing          = 6.25;
 static constexpr int    kSamplesPerFrame  = 79 * kSymsamples;        // 606720 (12.64 sec)
 
-static const char *kVersion = "0.5.0";
+static const char *kVersion = "0.5.1";
 
 extern "C" const char *x6100js8_version(void) {
     return kVersion;
@@ -54,11 +54,25 @@ extern "C" const char *x6100js8_version(void) {
 
 // ─── internal helpers ────────────────────────────────────────────────────────
 
+// Encode 12 alphabet64 chars + i3 to 79 tones via the JS8Call-interop
+// js8_encode_tones path. Returns a 79-int vector, or empty on failure.
+//
+// (This is the small wrapper that the 0.5.0 refactor referenced as
+// `x6100js8::encode_frame` but never actually defined — the build was
+// broken until 0.5.1 added this back. See log entry 2026-05-13.)
+static std::vector<int> encode_frame_tones(const char m[12], int i3) {
+    int tones[79];
+    if (!x6100js8::js8_encode_tones(i3, x6100js8::kCostasNormal, m, tones)) {
+        return {};
+    }
+    return std::vector<int>(tones, tones + 79);
+}
+
 // Encode one 79-symbol JS8 frame and append quantised int16 PCM to *frames*
 // as a new entry. i3 selects frame type: 1=first, 0=middle, 2=last.
 static bool encode_one_frame(const char m[12], int i3, double hz,
                              std::vector<std::vector<int16_t>> &frames) {
-    std::vector<int> syms = x6100js8::encode_frame(m, i3);
+    std::vector<int> syms = encode_frame_tones(m, i3);
     if (syms.empty()) return false;
 
     std::vector<double> pcm = fsk(syms, hz, kSpacing, kRate, kSymsamples);
@@ -111,7 +125,7 @@ extern "C" int x6100js8_encode_hb(const char *callsign,
     char m[12];
     if (!x6100js8::build_hb_chars(callsign, grid, m)) return 2;
 
-    std::vector<int> syms = x6100js8::encode_frame(m, 0);
+    std::vector<int> syms = encode_frame_tones(m, 0);
     if (syms.empty()) return 3;
 
     std::vector<double> pcm = fsk(syms, hz, kSpacing, kRate, kSymsamples);
